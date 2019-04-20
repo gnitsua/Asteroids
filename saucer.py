@@ -42,7 +42,7 @@ class Saucer:
         if self.type == "Large":
             self.bdir = random.randint(0, 360)
         if self.cd == 0:
-            self.bullets.append(Bullet(self.x, self.y, self.bdir))
+            self.bullets.append(Bullet(self.x, self.y, self.bdir, self.gameDisplay))
             self.cd = 30
         else:
             self.cd -= 1

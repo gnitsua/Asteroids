@@ -139,7 +139,7 @@ def gameLoop(startingState):
                         DeadPlayer(player.x, player.y, 5 * player_size / (2 * math.cos(math.atan(1 / 3))), gameDisplay))
                     player_pieces.append(
                         DeadPlayer(player.x, player.y, 5 * player_size / (2 * math.cos(math.atan(1 / 3))), gameDisplay))
-                    player_pieces.append(DeadPlayer(player.x, player.y, player_size))
+                    player_pieces.append(DeadPlayer(player.x, player.y, player_size, gameDisplay))
 
                     # Kill player
                     player_state = "Died"
