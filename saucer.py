@@ -6,7 +6,6 @@ import pygame
 
 from bullet import Bullet
 from constants import white, display_width, display_height, saucer_speed
-from sounds import snd_saucerB, snd_saucerS
 
 
 class Saucer:
@@ -48,11 +47,11 @@ class Saucer:
         else:
             self.cd -= 1
 
-        # Play SFX
-        if self.type == "Large":
-            pygame.mixer.Sound.play(snd_saucerB)
-        else:
-            pygame.mixer.Sound.play(snd_saucerS)
+        # # Play SFX
+        # if self.type == "Large":
+        #     pygame.mixer.Sound.play(snd_saucerB)
+        # else:
+        #     pygame.mixer.Sound.play(snd_saucerS)
 
     def createSaucer(self):
         # Create saucer

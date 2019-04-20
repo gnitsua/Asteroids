@@ -57,7 +57,7 @@ class Asteroid:
             else:
                 next_v = self.vertices[v + 1]
             this_v = self.vertices[v]
-            pygame.draw.line(gameDisplay, white, (self.x + this_v[0] * math.cos(this_v[1] * math.pi / 180),
+            pygame.draw.line(self.gameDisplay, white, (self.x + this_v[0] * math.cos(this_v[1] * math.pi / 180),
                                                   self.y + this_v[0] * math.sin(this_v[1] * math.pi / 180)),
                              (self.x + next_v[0] * math.cos(next_v[1] * math.pi / 180),
                               self.y + next_v[0] * math.sin(next_v[1] * math.pi / 180)))
