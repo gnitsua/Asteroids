@@ -3,7 +3,7 @@ import math
 
 import pygame
 
-from constants import bullet_speed, white, display_width, display_height
+from constants import bullet_speed, white, game_width, game_height
 
 
 class Bullet:
@@ -23,12 +23,12 @@ class Bullet:
         pygame.draw.circle(self.gameDisplay, white, (int(self.x), int(self.y)), 3)
 
         # Wrapping
-        if self.x > display_width:
+        if self.x > game_width:
             self.x = 0
         elif self.x < 0:
-            self.x = display_width
-        elif self.y > display_height:
+            self.x = game_width
+        elif self.y > game_height:
             self.y = 0
         elif self.y < 0:
-            self.y = display_height
+            self.y = game_height
         self.life -= 1

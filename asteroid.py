@@ -4,8 +4,8 @@ import random
 
 import pygame
 
-from constants import display_height
-from constants import display_width
+from constants import game_height
+from constants import game_width
 from constants import white
 
 
@@ -41,14 +41,14 @@ class Asteroid:
         self.y += self.speed * math.sin(self.dir)
 
         # Check for wrapping
-        if self.x > display_width:
+        if self.x > game_width:
             self.x = 0
         elif self.x < 0:
-            self.x = display_width
-        elif self.y > display_height:
+            self.x = game_width
+        elif self.y > game_height:
             self.y = 0
         elif self.y < 0:
-            self.y = display_height
+            self.y = game_height
 
         # Draw asteroid
         for v in range(len(self.vertices)):

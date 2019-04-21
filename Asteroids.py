@@ -1,17 +1,21 @@
 # Import modules
+import random
 import re
 
+import cv2
 import math
-import random
-
+import numpy as np
 import pygame
 import zmq
+from pygame.constants import BLEND_ADD
 from zmq import Again
 
+from TrackMarkers.trackMarkers import ArucoCornerTracker
+from TrackMarkers.trackMarkers import find_intersection
 from asteroid import Asteroid
 from bullet import Bullet
-from constants import display_width, display_height, black, white, player_max_rtspd, player_size, \
-    small_saucer_accuracy
+from constants import game_width, game_height, black, white, player_size, \
+    small_saucer_accuracy, empty, display_width, display_height, player_max_rtspd
 from deadPlayer import DeadPlayer
 from player import Player
 from saucer import Saucer
@@ -26,9 +30,52 @@ pygame.init()
 # snd_saucerB = pygame.mixer.Sound("Sounds/saucerBig.wav")
 # snd_saucerS = pygame.mixer.Sound("Sounds/saucerSmall.wav")
 # Make surface and display
-gameDisplay = pygame.display.set_mode((display_width, display_height))
+outerDisplay = pygame.display.set_mode((display_width, display_height))
+gameDisplay = pygame.Surface((game_width, game_height), flags=pygame.SRCALPHA)
+
 pygame.display.set_caption("Asteroids")
 timer = pygame.time.Clock()
+
+markerTracker = ArucoCornerTracker()
+
+
+
+def getImageToFrame(img):
+    video_width = 640
+    video_height = 480
+    frame = cv2.resize(img, (0, 0), fx=(display_width / video_width), fy=(display_height / video_height))
+    # frame = cv2.resize(frame, (0, 0), fx=10, fy=2)
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    frame = np.rot90(frame)
+    frame = pygame.surfarray.make_surface(frame)
+    return frame
+
+
+def getGameCorners(videoFrame):
+    cornerPoints = markerTracker.getCornerPoints(videoFrame)
+    try:
+        top = cornerPoints[0]
+        bottom = cornerPoints[2]
+        right = cornerPoints[1]
+        left = find_intersection(top, bottom, right)
+        return [top, bottom, right, left]
+
+    except KeyError:
+        return [[0, 0], [0, game_height], [game_width, 0],
+                [game_width, game_height]]  # if all else fails, return the original image
+
+
+def getWarpedFrame(frame, top, bottom, right, left):
+    image_array = pygame.surfarray.array3d(frame)
+
+    pts1 = np.float32([[0, 0], [game_width, 0], [0, game_height], [game_width, game_height]])
+    pts2 = np.float32([top, bottom, right, left])
+    M = cv2.getPerspectiveTransform(pts1, pts2)
+
+    rows, cols, ch = image_array.shape
+    dst = cv2.warpPerspective(image_array, M, (cols, rows))
+
+    return pygame.surfarray.make_surface(dst)
 
 
 # Create function to draw texts
@@ -68,8 +115,10 @@ def gameLoop(startingState):
     oneUp_multiplier = 1
     playOneUpSFX = 0
     intensity = 0
-    player = Player(display_width / 2, display_height / 2, gameDisplay)
+    player = Player(game_width / 2, game_height / 2, gameDisplay)
     saucer = Saucer(gameDisplay)
+
+    camera = cv2.VideoCapture(0)
 
     port = "5556"
     # Socket to talk to server
@@ -85,9 +134,6 @@ def gameLoop(startingState):
     socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
     socket.RCVTIMEO = 10
 
-
-
-
     print("Connected to command server")
     # socket.connect("tcp://127.0.0.1:%s" % port)
     # socket.setsockopt_string(zmq.SUBSCRIBE, "")
@@ -96,14 +142,15 @@ def gameLoop(startingState):
     while gameState != "Exit":
         # Game menu
         while gameState == "Menu":
-            gameDisplay.fill(black)
-            drawText("ASTEROIDS", white, display_width / 2, display_height / 2, 100)
-            drawText("Press any key to START", white, display_width / 2, display_height / 2 + 100, 50)
+            gameDisplay.fill(empty)
+            drawText("ASTEROIDS", white, game_width / 2, game_height / 2, 100)
+            drawText("Press any key to START", white, game_width / 2, game_height / 2 + 100, 50)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     gameState = "Exit"
                 if event.type == pygame.KEYDOWN:
                     gameState = "Playing"
+            outerDisplay.blit(gameDisplay, (0, 0))
             pygame.display.update()
             timer.tick(5)
 
@@ -112,12 +159,12 @@ def gameLoop(startingState):
             if event.type == pygame.QUIT:
                 gameState = "Exit"
             if event.type == pygame.KEYDOWN:
-                # if event.key == pygame.K_UP:
-                #     player.thrust = True
-                # if event.key == pygame.K_LEFT:
-                #     player.rtspd = -player_max_rtspd
-                # if event.key == pygame.K_RIGHT:
-                #     player.rtspd = player_max_rtspd
+                if event.key == pygame.K_UP:
+                    player.thrust = True
+                if event.key == pygame.K_LEFT:
+                    player.rtspd = -player_max_rtspd
+                if event.key == pygame.K_RIGHT:
+                    player.rtspd = player_max_rtspd
                 if event.key == pygame.K_SPACE and player_dying_delay == 0 and len(bullets) < bullet_capacity:
                     bullets.append(Bullet(player.x, player.y, player.dir, gameDisplay))
                     # Play SFX
@@ -138,7 +185,6 @@ def gameLoop(startingState):
         try:
             string = str(socket.recv())
             positions = tuple(map(int, re.findall(r'[0-9]+', string[7:])))
-            print(positions)
             player.setX(positions[0])
             player.setY(positions[1])
         except Again:
@@ -152,15 +198,16 @@ def gameLoop(startingState):
             player_state = "Alive"
 
         # Reset display
-        gameDisplay.fill(black)
 
+        # gameDisplay.fill(black)
+        gameDisplay.fill(empty)
         # Hyperspace
         if hyperspace != 0:
             player_state = "Died"
             hyperspace -= 1
             if hyperspace == 1:
-                player.x = random.randrange(0, display_width)
-                player.y = random.randrange(0, display_height)
+                player.x = random.randrange(0, game_width)
+                player.y = random.randrange(0, game_height)
 
         # Check for collision w/ asteroid
         for a in asteroids:
@@ -207,7 +254,7 @@ def gameLoop(startingState):
         # Update ship fragments
         for f in player_pieces:
             f.updateDeadPlayer()
-            if f.x > display_width or f.x < 0 or f.y > display_height or f.y < 0:
+            if f.x > game_width or f.x < 0 or f.y > game_height or f.y < 0:
                 player_pieces.remove(f)
 
         # Check for end of stage
@@ -219,11 +266,11 @@ def gameLoop(startingState):
                 intensity = 0
                 # Spawn asteroid away of center
                 for i in range(stage):
-                    xTo = display_width / 2
-                    yTo = display_height / 2
-                    while xTo - display_width / 2 < display_width / 4 and yTo - display_height / 2 < display_height / 4:
-                        xTo = random.randrange(0, display_width)
-                        yTo = random.randrange(0, display_height)
+                    xTo = game_width / 2
+                    yTo = game_height / 2
+                    while xTo - game_width / 2 < game_width / 4 and yTo - game_height / 2 < game_height / 4:
+                        xTo = random.randrange(0, game_width)
+                        yTo = random.randrange(0, game_height)
                     asteroids.append(Asteroid(xTo, yTo, "Large", gameDisplay))
                 next_level_delay = 0
 
@@ -440,8 +487,8 @@ def gameLoop(startingState):
             else:
                 player.drawPlayer()
         else:
-            drawText("Game Over", white, display_width / 2, display_height / 2, 100)
-            drawText("Press \"R\" to restart!", white, display_width / 2, display_height / 2 + 100, 50)
+            drawText("Game Over", white, game_width / 2, game_height / 2, 100)
+            drawText("Press \"R\" to restart!", white, game_width / 2, game_height / 2 + 100, 50)
             live = -1
 
         # Draw score
@@ -451,6 +498,12 @@ def gameLoop(startingState):
         for l in range(live + 1):
             Player(75 + l * 25, 75, gameDisplay).drawPlayer()
 
+        outerDisplay.fill(black)
+        ret, frame = camera.read()
+        corners = getGameCorners(frame)
+        outerDisplay.blit(getWarpedFrame(gameDisplay, corners[0],corners[2],corners[1],corners[3]), (0, 0))
+        outerDisplay.blit(getImageToFrame(frame), (0, 0), special_flags=BLEND_ADD)
+        # outerDisplay.blit(gameDisplay, (game_offset_x, game_offset_y))
         # Update screen
         pygame.display.update()
 
@@ -459,7 +512,8 @@ def gameLoop(startingState):
 
 
 # Start game
-gameLoop("Menu")
+# gameLoop("Menu")
+gameLoop("Playing")
 
 # End game
 pygame.quit()
