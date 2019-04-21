@@ -1,8 +1,12 @@
 # Import modules
+import re
+
 import math
 import random
 
 import pygame
+import zmq
+from zmq import Again
 
 from asteroid import Asteroid
 from bullet import Bullet
@@ -67,6 +71,27 @@ def gameLoop(startingState):
     player = Player(display_width / 2, display_height / 2, gameDisplay)
     saucer = Saucer(gameDisplay)
 
+    port = "5556"
+    # Socket to talk to server
+    context = zmq.Context()
+    socket = context.socket(zmq.SUB)
+
+    print
+    "Collecting updates from weather server..."
+    socket.connect("tcp://localhost:%s" % port)
+
+    # Subscribe to zipcode, default is NYC, 10001
+    topicfilter = "10001"
+    socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
+    socket.RCVTIMEO = 10
+
+
+
+
+    print("Connected to command server")
+    # socket.connect("tcp://127.0.0.1:%s" % port)
+    # socket.setsockopt_string(zmq.SUBSCRIBE, "")
+
     # Main loop
     while gameState != "Exit":
         # Game menu
@@ -87,12 +112,12 @@ def gameLoop(startingState):
             if event.type == pygame.QUIT:
                 gameState = "Exit"
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP:
-                    player.thrust = True
-                if event.key == pygame.K_LEFT:
-                    player.rtspd = -player_max_rtspd
-                if event.key == pygame.K_RIGHT:
-                    player.rtspd = player_max_rtspd
+                # if event.key == pygame.K_UP:
+                #     player.thrust = True
+                # if event.key == pygame.K_LEFT:
+                #     player.rtspd = -player_max_rtspd
+                # if event.key == pygame.K_RIGHT:
+                #     player.rtspd = player_max_rtspd
                 if event.key == pygame.K_SPACE and player_dying_delay == 0 and len(bullets) < bullet_capacity:
                     bullets.append(Bullet(player.x, player.y, player.dir, gameDisplay))
                     # Play SFX
@@ -109,7 +134,15 @@ def gameLoop(startingState):
                 if event.key == pygame.K_LEFT or event.key == pygame.K_RIGHT:
                     player.rtspd = 0
 
-        # Update player
+        # Update player using the data from the server
+        try:
+            string = str(socket.recv())
+            positions = tuple(map(int, re.findall(r'[0-9]+', string[7:])))
+            print(positions)
+            player.setX(positions[0])
+            player.setY(positions[1])
+        except Again:
+            pass
         player.updatePlayer()
 
         # Checking player invincible time

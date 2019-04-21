@@ -1,6 +1,5 @@
 # Class player
 import math
-
 import pygame
 
 from constants import fd_fric, player_max_speed, bd_fric, display_width, display_height, player_size, white
@@ -16,6 +15,12 @@ class Player:
         self.rtspd = 0
         self.thrust = False
         self.gameDisplay = gameDisplay
+
+    def setX(self, x):
+        self.x = x
+
+    def setY(self, y):
+        self.y = y
 
     def updatePlayer(self):
         # Move player
