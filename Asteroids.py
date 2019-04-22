@@ -63,7 +63,7 @@ gameDisplay = pygame.Surface((game_width, game_height), flags=pygame.SRCALPHA)
 pygame.display.set_caption("Asteroids")
 timer = pygame.time.Clock()
 
-markerTracker = ArucoCornerTracker()
+markerTracker = ArucoCornerTracker('webcam.npz')
 
 
 def getImageToFrame(img):
@@ -94,16 +94,15 @@ def getGameCorners(videoFrame):
 def getWarpedFrame(frame, top, bottom, right, left):
     image_array = pygame.surfarray.array3d(frame)
     image_array = np.rot90(image_array,k=3)
-    half_game_height = math.floor(game_height / 2)
-    half_game_width = math.floor(game_width / 2)
+    image_array = cv2.GaussianBlur(image_array, (3, 3), 0)
     pts1 = np.float32([[0, 0], [game_width, 0], [0, game_height],
                 [game_width, game_height]])
     pts2 = np.float32([top, bottom, right, left])
     M = cv2.getPerspectiveTransform(pts1, pts2)
 
-    rows, cols, ch = image_array.shape
     dst = cv2.warpPerspective(image_array, M, (game_width, game_height))
     dst = np.rot90(dst)
+
     return pygame.surfarray.make_surface(dst)
 
 
