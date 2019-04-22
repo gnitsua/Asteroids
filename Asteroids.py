@@ -14,8 +14,8 @@ from TrackMarkers.trackMarkers import ArucoCornerTracker
 from TrackMarkers.trackMarkers import find_intersection
 from asteroid import Asteroid
 from bullet import Bullet
-from constants import game_width, game_height, black, white, player_size, \
-    small_saucer_accuracy, empty, display_width, display_height, player_max_rtspd
+from constants import black, white, player_size, \
+    small_saucer_accuracy, empty, player_max_rtspd
 from deadPlayer import DeadPlayer
 from player import Player
 from saucer import Saucer
@@ -30,7 +30,34 @@ pygame.init()
 # snd_saucerB = pygame.mixer.Sound("Sounds/saucerBig.wav")
 # snd_saucerS = pygame.mixer.Sound("Sounds/saucerSmall.wav")
 # Make surface and display
-outerDisplay = pygame.display.set_mode((display_width, display_height))
+
+camera = cv2.VideoCapture(0)
+while (True):
+    print("Wating for camera to be ready")
+    ret, frame = camera.read()
+    if (ret == True):
+        game_width = frame.shape[1] #TODO this is overriding the value of a constant
+        game_height = frame.shape[0]
+        break
+
+port = "5556"
+# Socket to talk to server
+context = zmq.Context()
+socket = context.socket(zmq.SUB)
+
+print("Collecting updates from weather server...")
+socket.connect("tcp://192.168.1.2:%s" % port)
+
+# Subscribe to zipcode, default is NYC, 10001
+topicfilter = "10001"
+socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
+socket.RCVTIMEO = 10
+
+print("Connected to command server")
+# socket.connect("tcp://127.0.0.1:%s" % port)
+# socket.setsockopt_string(zmq.SUBSCRIBE, "")
+
+outerDisplay = pygame.display.set_mode((game_width, game_height))
 gameDisplay = pygame.Surface((game_width, game_height), flags=pygame.SRCALPHA)
 
 pygame.display.set_caption("Asteroids")
@@ -39,11 +66,10 @@ timer = pygame.time.Clock()
 markerTracker = ArucoCornerTracker()
 
 
-
 def getImageToFrame(img):
     video_width = 640
     video_height = 480
-    frame = cv2.resize(img, (0, 0), fx=(display_width / video_width), fy=(display_height / video_height))
+    frame = cv2.resize(img, (0, 0), fx=(game_width / video_width), fy=(game_height / video_height))
     # frame = cv2.resize(frame, (0, 0), fx=10, fy=2)
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     frame = np.rot90(frame)
@@ -61,20 +87,23 @@ def getGameCorners(videoFrame):
         return [top, bottom, right, left]
 
     except KeyError:
-        return [[0, 0], [0, game_height], [game_width, 0],
+        return [[0, 0], [game_width, 0], [0, game_height],
                 [game_width, game_height]]  # if all else fails, return the original image
 
 
 def getWarpedFrame(frame, top, bottom, right, left):
     image_array = pygame.surfarray.array3d(frame)
-
-    pts1 = np.float32([[0, 0], [game_width, 0], [0, game_height], [game_width, game_height]])
+    image_array = np.rot90(image_array,k=3)
+    half_game_height = math.floor(game_height / 2)
+    half_game_width = math.floor(game_width / 2)
+    pts1 = np.float32([[0, 0], [game_width, 0], [0, game_height],
+                [game_width, game_height]])
     pts2 = np.float32([top, bottom, right, left])
     M = cv2.getPerspectiveTransform(pts1, pts2)
 
     rows, cols, ch = image_array.shape
-    dst = cv2.warpPerspective(image_array, M, (cols, rows))
-
+    dst = cv2.warpPerspective(image_array, M, (game_width, game_height))
+    dst = np.rot90(dst)
     return pygame.surfarray.make_surface(dst)
 
 
@@ -118,25 +147,7 @@ def gameLoop(startingState):
     player = Player(game_width / 2, game_height / 2, gameDisplay)
     saucer = Saucer(gameDisplay)
 
-    camera = cv2.VideoCapture(0)
 
-    port = "5556"
-    # Socket to talk to server
-    context = zmq.Context()
-    socket = context.socket(zmq.SUB)
-
-    print
-    "Collecting updates from weather server..."
-    socket.connect("tcp://localhost:%s" % port)
-
-    # Subscribe to zipcode, default is NYC, 10001
-    topicfilter = "10001"
-    socket.setsockopt_string(zmq.SUBSCRIBE, topicfilter)
-    socket.RCVTIMEO = 10
-
-    print("Connected to command server")
-    # socket.connect("tcp://127.0.0.1:%s" % port)
-    # socket.setsockopt_string(zmq.SUBSCRIBE, "")
 
     # Main loop
     while gameState != "Exit":
@@ -184,6 +195,7 @@ def gameLoop(startingState):
         # Update player using the data from the server
         try:
             string = str(socket.recv())
+            print(string)
             positions = tuple(map(int, re.findall(r'[0-9]+', string[7:])))
             player.setX(positions[0])
             player.setY(positions[1])
@@ -213,7 +225,7 @@ def gameLoop(startingState):
         for a in asteroids:
             a.updateAsteroid()
             if player_state != "Died":
-                if isColliding(player.x, player.y, a.x, a.y, a.size):
+                if False and isColliding(player.x, player.y, a.x, a.y, a.size):
                     # Create ship fragments
                     player_pieces.append(
                         DeadPlayer(player.x, player.y, 5 * player_size / (2 * math.cos(math.atan(1 / 3))), gameDisplay))
@@ -501,9 +513,9 @@ def gameLoop(startingState):
         outerDisplay.fill(black)
         ret, frame = camera.read()
         corners = getGameCorners(frame)
-        outerDisplay.blit(getWarpedFrame(gameDisplay, corners[0],corners[2],corners[1],corners[3]), (0, 0))
+        outerDisplay.blit(getWarpedFrame(gameDisplay, corners[0], corners[2], corners[1], corners[3]), (0,0))
         outerDisplay.blit(getImageToFrame(frame), (0, 0), special_flags=BLEND_ADD)
-        # outerDisplay.blit(gameDisplay, (game_offset_x, game_offset_y))
+        # outerDisplay.blit(gameDisplay, (0, 0))
         # Update screen
         pygame.display.update()
 
